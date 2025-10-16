@@ -1,8 +1,35 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define CMD_BUFFER 1024
+#define IP_BUFFER 128
+
+void get_vm_ip(char *vm_name, char *ip_buffer) {
+    char cmd[CMD_BUFFER];
+    FILE *fp;
+
+    snprintf(cmd, sizeof(cmd), "virsh domifaddr %s | awk '/ipv4/ {print $4}' | cut -d'/' -f1", vm_name);
+
+    while(1) {  // read ip every 5 sec
+        fp = popen(cmd, "r");
+        if (fp == NULL) {
+            perror("popen failed");
+            return;
+        }
+        if (fgets(ip_buffer, IP_BUFFER, fp) != NULL) {
+            ip_buffer[strcspn(ip_buffer, "\n")] = 0;
+            pclose(fp);
+            if (strlen(ip_buffer) > 0)
+                return;
+        }
+        pclose(fp);
+        printf("Waiting for VM IP...\n");
+        sleep(5);
+    }
+    strcpy(ip_buffer, "UNKNOWN");
+}
 
 int main(int argc, char *argv[]) {
     if (argc < 5) {
@@ -14,7 +41,9 @@ int main(int argc, char *argv[]) {
     char *ram = argv[2];
     char *vcpus = argv[3];
     char *message = argv[4];
+    char *virt_type = (argc == 5) ? argv[5] : "qemu";
     char cmd[CMD_BUFFER];
+    char ip[IP_BUFFER] = "";
 
     printf("Create user-data\n");
     FILE *f = fopen("user-data", "w");
@@ -62,17 +91,20 @@ int main(int argc, char *argv[]) {
         "--disk path=./jammy-server-cloudimg-amd64.img,format=qcow2 "
         "--disk path=cloud-data.iso,device=cdrom "
         "--os-variant ubuntu22.04 "
-        "--virt-type qemu "
+        "--virt-type %s "
         "--network network=vmnet1,model=virtio "
         "--import --noautoconsole",
-        vm_name, ram, vcpus);
+        vm_name, ram, vcpus, virt_type);
     system(cmd);
 
     printf("Get VM IP\n");
-    snprintf(cmd, CMD_BUFFER, "virsh domifaddr %s", vm_name);
-    system(cmd);
+    get_vm_ip(vm_name, ip);
 
-    printf("VM '%s' created\n", vm_name);
+    if (strcmp(ip, "UNKNOWN") != 0){
+        printf("VM '%s' created.\n Website available at: http://%s\n", vm_name, ip);
+    }else{
+        printf("Could not determine IP address for VM '%s'\n", vm_name);
+    }
 
     return 0;
 }
