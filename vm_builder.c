@@ -92,7 +92,7 @@ int main(int argc, char *argv[]) {
         "--disk path=cloud-data.iso,device=cdrom "
         "--os-variant ubuntu22.04 "
         "--virt-type %s "
-        "--network network=vmnet1,model=virtio "
+        "--network network=default,model=virtio "
         "--import --noautoconsole",
         vm_name, ram, vcpus, virt_type);
     system(cmd);
